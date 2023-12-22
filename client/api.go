@@ -55,6 +55,7 @@ type API interface {
 	// If the field associated with column "_uuid" has some content, it will be
 	// treated as named-uuid
 	Create(...model.Model) ([]ovsdb.Operation, error)
+	Select(...model.Model) ([]ovsdb.Operation, error)
 }
 
 // ConditionalAPI is an interface used to perform operations that require / use Conditions
@@ -275,6 +276,55 @@ func (a api) Get(ctx context.Context, m model.Model) error {
 	model.CloneInto(found, m)
 
 	return nil
+}
+
+func (a api) Select(models ...model.Model) ([]ovsdb.Operation, error) {
+	var operations []ovsdb.Operation
+	for _, m := range models {
+		tableName, err := a.getTableFromModel(m)
+		if err != nil {
+			return nil, err
+		}
+		operation := ovsdb.Operation{
+			Op:    ovsdb.OperationSelect,
+			Table: tableName,
+			Where: []ovsdb.Condition{},
+		}
+
+		// Read _uuid field, and use it as named-uuid
+		info, err := a.cache.DatabaseModel().NewModelInfo(m)
+		if err != nil {
+			return nil, err
+		}
+		for col := range info.Metadata.Fields {
+			val, err := info.FieldByColumn(col)
+			if err != nil {
+				return nil, err
+			}
+			switch col {
+			case "_uuid":
+				tmpUUID := val.(string)
+				if ovsdb.IsValidUUID(tmpUUID) {
+					operation.Where = append(operation.Where, ovsdb.NewCondition("_uuid", "==", ovsdb.UUID{GoUUID: tmpUUID}))
+					continue
+				}
+			case "name":
+				if val != "" {
+					operation.Where = append(operation.Where, ovsdb.NewCondition("name", "==", val))
+				}
+				// TODO: add support for other types
+				// default:
+				// 	conditions = append(conditions, ovsdb.NewCondition(col, "==", val))
+			}
+		}
+		if operation.UUID == "" && len(operation.Where) == 0 {
+			return nil, errors.New("uuid or name not found in model")
+		}
+
+		operations = append(operations, operation)
+	}
+
+	return operations, nil
 }
 
 // Create is a generic function capable of creating any row in the DB

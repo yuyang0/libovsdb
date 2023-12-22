@@ -1451,6 +1451,11 @@ func (o *ovsdbClient) Create(models ...model.Model) ([]ovsdb.Operation, error) {
 	return o.primaryDB().api.Create(models...)
 }
 
+// Select implements the API interface's Select function
+func (o *ovsdbClient) Select(models ...model.Model) ([]ovsdb.Operation, error) {
+	return o.primaryDB().api.Select(models...)
+}
+
 // List implements the API interface's List function
 func (o *ovsdbClient) List(ctx context.Context, result interface{}) error {
 	primaryDB := o.primaryDB()
